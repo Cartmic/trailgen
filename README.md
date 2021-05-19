@@ -4,7 +4,7 @@ This is very much an alpha release and things are needing to be tweaked but wher
 
 ![Trailgen Example](screenshot.png?raw=true "Trailgen example screenshot with custom textures.")
 
-#Installation:
+# Installation:
 
 Replace the files in the 'trailgen/minestest' folder into the relevant places.
 
