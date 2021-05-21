@@ -97,7 +97,7 @@ MapgenTrailgenParams::MapgenTrailgenParams():
 	np_terrain_higher (20,   16.0, v3f(500.0, 500.0, 500.0), 85039,  5, 0.6,  2.0),
 	np_steepness      (0.85, 0.5,  v3f(125.0, 125.0, 125.0), -932,   5, 0.7,  2.0),
 	np_height_select  (0,    1.0,  v3f(250.0, 250.0, 250.0), 4213,   5, 0.69, 2.0),
-	np_filler_depth (4,    2.0,  v3f(200.0, 200.0, 200.0), 91013,  3, 0.55, 2.0),
+	np_filler_depth (1,   2,  v3f(200.0, 200.0, 200.0), 91013,  3, 0.7, 2.0),
 	np_cavern       (0.0, 1.0, v3f(384, 128, 384), 723,   5, 0.63, 2.0),
 	np_cave1        (0,   12,  v3f(61,  61,  61),  52534, 3, 0.5,  2.0),
 	np_cave2        (0,   12,  v3f(67,  67,  67),  10325, 3, 0.5,  2.0),
@@ -170,31 +170,6 @@ void MapgenTrailgenParams::setDefaultSettings(Settings *settings)
 
 
 /////////////////////////////////////////////////////////////////
-
-
-int MapgenTrailgen::getSpawnLevelAtPoint(v2s16 p)
-{
-	u32 ni2d = 0;
-	s16 surface_y = baseTerrainLevelFromMap(ni2d);
-
-		noise_terrain->perlinMap2D(node_min.X, node_min.Z);
-		noise_terrain_higher->perlinMap2D(node_min.X, node_min.Z);
-		noise_steepness->perlinMap2D(node_min.X, node_min.Z);
-		noise_height_select->perlinMap2D(node_min.X, node_min.Z);
-
-	if (surface_y < water_level)
-		// Ocean world, may not have islands so allow spawn in water
-		return MYMAX(surface_y + 2, water_level);
-
-	if (surface_y >= water_level)
-		// Spawn on land
-		// + 2 not + 1, to spawn above biome 'dust' nodes
-		return surface_y + 2;
-
-	// Unsuitable spawn point
-	return MAX_MAP_GENERATION_LIMIT;
-}
-
 
 void MapgenTrailgen::makeChunk(BlockMakeData *data)
 {
@@ -314,6 +289,24 @@ float MapgenTrailgen::baseTerrainLevelFromMap(int index)
 
 	return baseTerrainLevel(terrain_base, terrain_higher,
 							steepness, height_select);
+}
+
+int MapgenTrailgen::getSpawnLevelAtPoint(v2s16 p)
+{
+	u32 ni2d = 0;
+	s16 surface_y = baseTerrainLevelFromMap(ni2d);
+
+	if (surface_y < water_level)
+		// Ocean world, may not have islands so allow spawn in water
+		return MYMAX(surface_y + 2, water_level);
+
+	if (surface_y >= water_level)
+		// Spawn on land
+		// + 2 not + 1, to spawn above biome 'dust' nodes
+		return surface_y + 2;
+
+	// Unsuitable spawn point
+	return MAX_MAP_GENERATION_LIMIT;
 }
 
 s16 MapgenTrailgen::generateTerrain()
