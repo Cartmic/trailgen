@@ -76,9 +76,9 @@ public:
 	float baseTerrainLevel(float terrain_base, float terrain_higher,
 		float steepness, float height_select);
 
-	int getSpawnLevelAtPoint(v2s16 p);
 	float baseTerrainLevelAtPoint(s16 x, s16 z);
 	float baseTerrainLevelFromMap(int index);
+	int getSpawnLevelAtPoint(v2s16 p);
 
 	s16 generateTerrain();
 

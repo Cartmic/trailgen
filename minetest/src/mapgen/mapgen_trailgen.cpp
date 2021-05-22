@@ -291,19 +291,39 @@ float MapgenTrailgen::baseTerrainLevelFromMap(int index)
 							steepness, height_select);
 }
 
+float MapgenTrailgen::baseTerrainLevelAtPoint(s16 x, s16 z)
+{
+	float hselect = NoisePerlin2D(&noise_height_select->np, x, z, seed);
+	hselect = rangelim(hselect, 0.0f, 1.0f);
+
+	float height_higher = NoisePerlin2D(&noise_terrain_higher->np, x, z, seed);
+
+	float height_lower = NoisePerlin2D(&noise_terrain->np, x, z, seed);
+
+	if (height_lower > height_higher)
+		return height_lower;
+
+	return (height_higher * hselect) + (height_lower * (1.0f - hselect));
+}
+
 int MapgenTrailgen::getSpawnLevelAtPoint(v2s16 p)
 {
-	u32 ni2d = 0;
-	s16 surface_y = baseTerrainLevelFromMap(ni2d);
 
-	if (surface_y < water_level)
-		// Ocean world, may not have islands so allow spawn in water
-		return MYMAX(surface_y + 2, water_level);
+	// Terrain noise 'offset' is the average level of that terrain.
+	// At least 50% of terrain will be below the higher of base and alt terrain
+	// 'offset's.
+	// Raising the maximum spawn level above 'water_level + 16' is necessary
+	// for when terrain 'offset's are set much higher than water_level.
+	s16 max_spawn_y = std::fmax(std::fmax(noise_terrain->np.offset,
+			noise_terrain_higher->np.offset),
+			water_level + 16);
+	// Base terrain calculation
+	s16 y = baseTerrainLevelAtPoint(p.X, p.Y);
 
-	if (surface_y >= water_level)
-		// Spawn on land
-		// + 2 not + 1, to spawn above biome 'dust' nodes
-		return surface_y + 2;
+	if (y < water_level || y > max_spawn_y)
+		return MAX_MAP_GENERATION_LIMIT; // Unsuitable spawn point
+
+	return y + 4;
 
 	// Unsuitable spawn point
 	return MAX_MAP_GENERATION_LIMIT;
