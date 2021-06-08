@@ -50,6 +50,8 @@ FlagDesc flagdesc_mapgen_trailgen[] = {
 MapgenTrailgen::MapgenTrailgen(MapgenTrailgenParams *params, EmergeParams *emerge)
 	: MapgenBasic(MAPGEN_TRAILGEN, params, emerge)
 {
+
+	ystride = csize.X;
 	spflags				= params->spflags;
 	cave_width			= params->cave_width;
 	small_cave_num_min	= params->small_cave_num_min;
@@ -191,6 +193,9 @@ void MapgenTrailgen::makeChunk(BlockMakeData *data)
 
 	blockseed = getBlockSeed2(full_node_min, seed);
 
+	// Make some noise
+	calculateNoise();
+
 	// Generate base terrain, mountains, and ridges with initial heightmaps
 	s16 stone_surface_max_y = generateTerrain();
 
@@ -280,54 +285,72 @@ float MapgenTrailgen::baseTerrainLevel(float terrain, float terrain_higher,
 	return base * (1.0 - a) + higher * a;
 }
 
+void MapgenTrailgen::calculateNoise()
+{
+	int x = node_min.X;
+	int z = node_min.Z;
+
+	noise_terrain->perlinMap2D_PO(x, 0.5, z, 0.5);
+	noise_terrain_higher->perlinMap2D_PO(x, 0.5, z, 0.5);
+	noise_steepness->perlinMap2D_PO(x, 0.5, z, 0.5);
+	noise_height_select->perlinMap2D_PO(x, 0.5, z, 0.5);
+
+}
+
+////
+
+float MapgenTrailgen::baseTerrainLevelFromNoise(v2s16 p)
+{
+
+	float terrain   = NoisePerlin2D_PO(&noise_terrain->np,
+							p.X, 0.5, p.Y, 0.5, seed);
+	float terrain_higher = NoisePerlin2D_PO(&noise_terrain_higher->np,
+							p.X, 0.5, p.Y, 0.5, seed);
+	float steepness      = NoisePerlin2D_PO(&noise_steepness->np,
+							p.X, 0.5, p.Y, 0.5, seed);
+	float height_select  = NoisePerlin2D_PO(&noise_height_select->np,
+							p.X, 0.5, p.Y, 0.5, seed);
+
+	return baseTerrainLevel(terrain, terrain_higher,
+							steepness, height_select);
+}
+
+
+float MapgenTrailgen::baseTerrainLevelFromMap(v2s16 p)
+{
+	int index = (p.Y - node_min.Z) * ystride + (p.X - node_min.X);
+	return baseTerrainLevelFromMap(index);
+}
+
 float MapgenTrailgen::baseTerrainLevelFromMap(int index)
 {
-	float terrain_base   = noise_terrain->result[index];
+	float terrain  = noise_terrain->result[index];
 	float terrain_higher = noise_terrain_higher->result[index];
 	float steepness      = noise_steepness->result[index];
 	float height_select  = noise_height_select->result[index];
 
-	return baseTerrainLevel(terrain_base, terrain_higher,
+	return baseTerrainLevel(terrain, terrain_higher,
 							steepness, height_select);
 }
 
-float MapgenTrailgen::baseTerrainLevelAtPoint(s16 x, s16 z)
+int MapgenTrailgen::getGroundLevelAtPoint(v2s16 p)
 {
-	float hselect = NoisePerlin2D(&noise_height_select->np, x, z, seed);
-	hselect = rangelim(hselect, 0.0f, 1.0f);
-
-	float height_higher = NoisePerlin2D(&noise_terrain_higher->np, x, z, seed);
-
-	float height_lower = NoisePerlin2D(&noise_terrain->np, x, z, seed);
-
-	if (height_lower > height_higher)
-		return height_lower;
-
-	return (height_higher * hselect) + (height_lower * (1.0f - hselect));
+	return baseTerrainLevelFromNoise(p) + 3;
 }
 
 int MapgenTrailgen::getSpawnLevelAtPoint(v2s16 p)
 {
 
-	// Terrain noise 'offset' is the average level of that terrain.
-	// At least 50% of terrain will be below the higher of base and alt terrain
-	// 'offset's.
-	// Raising the maximum spawn level above 'water_level + 16' is necessary
-	// for when terrain 'offset's are set much higher than water_level.
-	s16 max_spawn_y = std::fmax(std::fmax(noise_terrain->np.offset,
-			noise_terrain_higher->np.offset),
-			water_level + 16);
-	// Base terrain calculation
-	s16 y = baseTerrainLevelAtPoint(p.X, p.Y);
+	s16 level_at_point = baseTerrainLevelFromNoise(p) + 3;
+	if (level_at_point <= water_level ||
+			level_at_point > water_level + 16)
+		return MAX_MAP_GENERATION_LIMIT;  // Unsuitable spawn point
 
-	if (y < water_level || y > max_spawn_y)
-		return MAX_MAP_GENERATION_LIMIT; // Unsuitable spawn point
+	return level_at_point;
 
-	return y + 4;
-
-	// Unsuitable spawn point
-	return MAX_MAP_GENERATION_LIMIT;
 }
+
+////
 
 s16 MapgenTrailgen::generateTerrain()
 {
@@ -335,19 +358,18 @@ s16 MapgenTrailgen::generateTerrain()
 	MapNode n_stone(c_stone);
 	MapNode n_water(c_water_source);
 
-	const v3s16 &em = vm->m_area.getExtent();
+
 	s16 stone_surface_max_y = -MAX_MAP_GENERATION_LIMIT;
-	u32 ni2d = 0;
 
-		noise_terrain->perlinMap2D(node_min.X, node_min.Z);
-		noise_terrain_higher->perlinMap2D(node_min.X, node_min.Z);
-		noise_steepness->perlinMap2D(node_min.X, node_min.Z);
-		noise_height_select->perlinMap2D(node_min.X, node_min.Z);
-
+	u32 index = 0;
 	for (s16 z = node_min.Z; z <= node_max.Z; z++)
-	for (s16 x = node_min.X; x <= node_max.X; x++, ni2d++) {
-		s16 surface_y = baseTerrainLevelFromMap(ni2d);
+	for (s16 x = node_min.X; x <= node_max.X; x++, index++) {
+		s16 surface_y = (s16)baseTerrainLevelFromMap(index) + 2;
 
+		if (surface_y > stone_surface_max_y)
+			stone_surface_max_y = surface_y;
+
+		const v3s16 &em = vm->m_area.getExtent();
 		u32 vi = vm->m_area.index(x, node_min.Y - 1, z);
 		for (s16 y = node_min.Y - 1; y <= node_max.Y + 1; y++) {
 			if (vm->m_data[vi].getContent() == CONTENT_IGNORE) {
@@ -367,3 +389,5 @@ s16 MapgenTrailgen::generateTerrain()
 
 	return stone_surface_max_y;
 }
+
+
