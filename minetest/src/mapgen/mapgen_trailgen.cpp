@@ -334,13 +334,13 @@ float MapgenTrailgen::baseTerrainLevelFromMap(int index)
 
 int MapgenTrailgen::getGroundLevelAtPoint(v2s16 p)
 {
-	return baseTerrainLevelFromNoise(p) + 3;
+	return baseTerrainLevelFromNoise(p) + 4;
 }
 
 int MapgenTrailgen::getSpawnLevelAtPoint(v2s16 p)
 {
 
-	s16 level_at_point = baseTerrainLevelFromNoise(p) + 3;
+	s16 level_at_point = baseTerrainLevelFromNoise(p) + 4;
 	if (level_at_point <= water_level ||
 			level_at_point > water_level + 16)
 		return MAX_MAP_GENERATION_LIMIT;  // Unsuitable spawn point
