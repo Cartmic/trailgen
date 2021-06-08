@@ -50,7 +50,6 @@ FlagDesc flagdesc_mapgen_trailgen[] = {
 MapgenTrailgen::MapgenTrailgen(MapgenTrailgenParams *params, EmergeParams *emerge)
 	: MapgenBasic(MAPGEN_TRAILGEN, params, emerge)
 {
-
 	ystride = csize.X;
 	spflags				= params->spflags;
 	cave_width			= params->cave_width;
