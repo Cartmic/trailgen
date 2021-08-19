@@ -363,7 +363,7 @@ s16 MapgenTrailgen::generateTerrain()
 	u32 index = 0;
 	for (s16 z = node_min.Z; z <= node_max.Z; z++)
 	for (s16 x = node_min.X; x <= node_max.X; x++, index++) {
-		s16 surface_y = (s16)baseTerrainLevelFromMap(index) + 2;
+		s16 surface_y = (s16)baseTerrainLevelFromMap(index) + 1;
 
 		if (surface_y > stone_surface_max_y)
 			stone_surface_max_y = surface_y;
