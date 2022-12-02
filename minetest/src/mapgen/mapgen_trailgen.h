@@ -2,7 +2,7 @@
 Minetest
 Copyright (C) 2015-2020 paramat
 Copyright (C) 2015-2016 kwolekr, Ryan Kwolek <kwolekr@minetest.net>
-Copyright (C) 2021 cartmic, Michael Carter
+Copyright (C) 2021-2022 cartmic, Michael Carter
 
 This program is free software; you can redistribute it and/or modify
 it under the terms of the GNU Lesser General Public License as published by
@@ -42,6 +42,7 @@ struct MapgenTrailgenParams : public MapgenParams
 	s16 cavern_limit = -256;
 	s16 cavern_taper = 256;
 	float cavern_threshold = 0.7f;
+	u16 map_height_mod = 1;
 	s16 dungeon_ymin = -31000;
 	s16 dungeon_ymax = 31000;
 

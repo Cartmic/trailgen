@@ -2,7 +2,7 @@
 Minetest
 Copyright (C) 2015-2020 paramat
 Copyright (C) 2015-2016 kwolekr, Ryan Kwolek <kwolekr@minetest.net>
-Copyright (C) 2021 cartmic, Michael Carter
+Copyright (C) 2021-2022 cartmic, Michael Carter
 
 This program is free software; you can redistribute it and/or modify
 it under the terms of the GNU Lesser General Public License as published by
@@ -62,6 +62,7 @@ MapgenTrailgen::MapgenTrailgen(MapgenTrailgenParams *params, EmergeParams *emerg
 	cavern_limit			= params->cavern_limit;
 	cavern_taper 			= params->cavern_taper;
 	cavern_threshold		= params->cavern_threshold;
+	map_height_mod		= params->map_height_mod;
 	dungeon_ymin		= params->dungeon_ymin;
 	dungeon_ymax		= params->dungeon_ymax;
 
@@ -120,6 +121,7 @@ void MapgenTrailgenParams::readParams(const Settings *settings)
 	settings->getS16NoEx("mgtrailgen_cavern_limit",         cavern_limit);
 	settings->getS16NoEx("mgtrailgen_cavern_taper",         cavern_taper);
 	settings->getFloatNoEx("mgtrailgen_cavern_threshold",   cavern_threshold);
+	settings->getU16NoEx("mgtrailgen_map_height_mod",   map_height_mod);
 	settings->getS16NoEx("mgtrailgen_dungeon_ymin",         dungeon_ymin);
 	settings->getS16NoEx("mgtrailgen_dungeon_ymax",         dungeon_ymax);
 
@@ -148,6 +150,7 @@ void MapgenTrailgenParams::writeParams(Settings *settings) const
 	settings->setS16("mgtrailgen_cavern_limit",         cavern_limit);
 	settings->setS16("mgtrailgen_cavern_taper",         cavern_taper);
 	settings->setFloat("mgtrailgen_cavern_threshold",   cavern_threshold);
+	settings->setU16("mgtrailgen_map_height_mod",   map_height_mod);
 	settings->setS16("mgtrailgen_dungeon_ymin",         dungeon_ymin);
 	settings->setS16("mgtrailgen_dungeon_ymax",         dungeon_ymax);
 
@@ -195,7 +198,7 @@ void MapgenTrailgen::makeChunk(BlockMakeData *data)
 	// Make some noise
 	calculateNoise();
 
-	// Generate base terrain, mountains, and ridges with initial heightmaps
+	// Generate base terrain
 	s16 stone_surface_max_y = generateTerrain();
 
 	// Create heightmap
@@ -257,8 +260,7 @@ void MapgenTrailgen::makeChunk(BlockMakeData *data)
 	this->generating = false;
 }
 
-float MapgenTrailgen::baseTerrainLevel(float terrain, float terrain_higher,
-	float steepness, float height_select)
+float MapgenTrailgen::baseTerrainLevel(float terrain, float terrain_higher, float steepness, float height_select)
 {
 	float base   = 1 + terrain;
 	float higher = 1 + terrain_higher;
@@ -363,7 +365,7 @@ s16 MapgenTrailgen::generateTerrain()
 	u32 index = 0;
 	for (s16 z = node_min.Z; z <= node_max.Z; z++)
 	for (s16 x = node_min.X; x <= node_max.X; x++, index++) {
-		s16 surface_y = (s16)baseTerrainLevelFromMap(index) + 1;
+		s16 surface_y = (s16)baseTerrainLevelFromMap(index) + map_height_mod;
 
 		if (surface_y > stone_surface_max_y)
 			stone_surface_max_y = surface_y;
