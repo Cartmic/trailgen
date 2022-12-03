@@ -1,7 +1,7 @@
 # Trailgen
 Trailgen is a Minetest C++ v6-like mapgen which uses the biome api.
 
-This version is for Minetest-5.70-dev
+This version is for Minetest-5.7.0-dev
 
 ![Trailgen Example](screenshot.png?raw=true "Trailgen example screenshot with custom textures.")
 
