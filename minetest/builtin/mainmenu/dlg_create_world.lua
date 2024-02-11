@@ -33,29 +33,9 @@ local cb_caverns = { "caverns", fgettext("Caverns"),
 	fgettext("Very large caverns deep in the underground") }
 
 local flag_checkboxes = {
-	v5 = {
-		cb_caverns,
-	},
-	v7 = {
-		cb_caverns,
-		{ "ridges", fgettext("Rivers"), fgettext("Sea level rivers") },
-		{ "mountains", fgettext("Mountains") },
-		{ "floatlands", fgettext("Floatlands (experimental)"),
-		fgettext("Floating landmasses in the sky") },
-	},
 	carpathian = {
 		cb_caverns,
 		{ "rivers", fgettext("Rivers"), fgettext("Sea level rivers") },
-	},
-	valleys = {
-		{ "altitude_chill", fgettext("Altitude chill"),
-		fgettext("Reduces heat with altitude") },
-		{ "altitude_dry", fgettext("Altitude dry"),
-		fgettext("Reduces humidity with altitude") },
-		{ "humid_rivers", fgettext("Humid rivers"),
-		fgettext("Increases humidity around rivers") },
-		{ "vary_river_depth", fgettext("Vary river depth"),
-		fgettext("Low humidity and high heat causes shallow or dry rivers") },
 	},
 	flat = {
 		cb_caverns,
@@ -66,14 +46,34 @@ local flag_checkboxes = {
 		{ "terrain", fgettext("Additional terrain"),
 		fgettext("Generate non-fractal terrain: Oceans and underground") },
 	},
+	trailgen = {
+		cb_caverns,
+	},
+	v5 = {
+		cb_caverns,
+	},
 	v6 = {
 		{ "trees", fgettext("Trees and jungle grass") },
 		{ "flat", fgettext("Flat terrain") },
 		{ "mudflow", fgettext("Mud flow"), fgettext("Terrain surface erosion") },
 		-- Biome settings are in mgv6_biomes below
 	},
-	trailgen = {
+	v7 = {
 		cb_caverns,
+		{ "ridges", fgettext("Rivers"), fgettext("Sea level rivers") },
+		{ "mountains", fgettext("Mountains") },
+		{ "floatlands", fgettext("Floatlands (experimental)"),
+		fgettext("Floating landmasses in the sky") },
+	},
+	valleys = {
+		{ "altitude_chill", fgettext("Altitude chill"),
+		fgettext("Reduces heat with altitude") },
+		{ "altitude_dry", fgettext("Altitude dry"),
+		fgettext("Reduces humidity with altitude") },
+		{ "humid_rivers", fgettext("Humid rivers"),
+		fgettext("Increases humidity around rivers") },
+		{ "vary_river_depth", fgettext("Vary river depth"),
+		fgettext("Low humidity and high heat causes shallow or dry rivers") },
 	},
 }
 
@@ -94,27 +94,15 @@ local mgv6_biomes = {
 
 local function create_world_formspec(dialogdata)
 
-	-- Point the player to ContentDB when no games are found
-	if #pkgmgr.games == 0 then
-		return "size[8,2.5,true]" ..
-			"style[label_button;border=false]" ..
-			"button[0.5,0.5;7,0.5;label_button;" ..
-			fgettext("You have no games installed.") .. "]" ..
-			"button[0.5,1.5;2.5,0.5;world_create_open_cdb;" .. fgettext("Install a game") .. "]" ..
-			"button[5.0,1.5;2.5,0.5;world_create_cancel;" .. fgettext("Cancel") .. "]"
-	end
-
 	local current_mg = dialogdata.mg
 	local mapgens = core.get_mapgen_names()
 
-	local gameid = core.settings:get("menu_last_game")
-
 	local flags = dialogdata.flags
 
-	local game = pkgmgr.find_by_gameid(gameid)
+	local game = pkgmgr.find_by_gameid(core.settings:get("menu_last_game"))
 	if game == nil then
 		-- should never happen but just pick the first game
-		game = pkgmgr.get_game(1)
+		game = pkgmgr.games[1]
 		core.settings:set("menu_last_game", game.id)
 	end
 
@@ -315,8 +303,8 @@ local function create_world_formspec(dialogdata)
 		"label[0,2;" .. fgettext("Mapgen") .. "]"..
 		"dropdown[0,2.5;6.3;dd_mapgen;" .. mglist .. ";" .. selindex .. "]"
 
-	-- Warning if only devtest is installed
-	if #pkgmgr.games == 1 and pkgmgr.games[1].id == "devtest" then
+	-- Warning when making a devtest world
+	if game.id == "devtest" then
 		retval = retval ..
 			"container[0,3.5]" ..
 			"box[0,0;5.8,1.7;#ff8800]" ..
@@ -357,12 +345,18 @@ local function create_world_buttonhandler(this, fields)
 	if fields["world_create_confirm"] or
 		fields["key_enter"] then
 
+		if fields["key_enter"] then
+			-- HACK: This timestamp prevents double-triggering when pressing Enter on an input box
+			-- and releasing it on a button[] or textlist[] due to instant formspec updates.
+			this.parent.dlg_create_world_closed_at = core.get_us_time()
+		end
+
 		local worldname = fields["te_world_name"]
-		local game, gameindex = pkgmgr.find_by_gameid(core.settings:get("menu_last_game"))
+		local game, _ = pkgmgr.find_by_gameid(core.settings:get("menu_last_game"))
 
 		local message
 		if game == nil then
-			message = fgettext("No game selected")
+			message = fgettext_ne("No game selected")
 		end
 
 		if message == nil then
@@ -381,7 +375,7 @@ local function create_world_buttonhandler(this, fields)
 			end
 
 			if menudata.worldlist:uid_exists_raw(worldname) then
-				message = fgettext("A world named \"$1\" already exists", worldname)
+				message = fgettext_ne("A world named \"$1\" already exists", worldname)
 			end
 		end
 
@@ -394,16 +388,16 @@ local function create_world_buttonhandler(this, fields)
 				fixed_map_seed = this.data.seed,
 				mg_name = this.data.mg,
 				mg_flags = table_to_flags(this.data.flags.main),
+				mgcarpathian_spflags = table_to_flags(this.data.flags.carpathian),
+				mgflat_spflags = table_to_flags(this.data.flags.flat),
+				mgfractal_spflags = table_to_flags(this.data.flags.fractal),
+				mgtrailgen_spflags = table_to_flags(this.data.flags.trailgen),
 				mgv5_spflags = table_to_flags(this.data.flags.v5),
 				mgv6_spflags = table_to_flags(this.data.flags.v6),
 				mgv7_spflags = table_to_flags(this.data.flags.v7),
-				mgfractal_spflags = table_to_flags(this.data.flags.fractal),
-				mgcarpathian_spflags = table_to_flags(this.data.flags.carpathian),
 				mgvalleys_spflags = table_to_flags(this.data.flags.valleys),
-				mgtrailgen_spflags = table_to_flags(this.data.flags.trailgen),
-				mgflat_spflags = table_to_flags(this.data.flags.flat),
 			}
-			message = core.create_world(worldname, gameindex, settings)
+			message = core.create_world(worldname, game.id, settings)
 		end
 
 		if message == nil then
@@ -478,14 +472,14 @@ function create_create_world_dlg()
 		mg = core.settings:get("mg_name"),
 		flags = {
 			main = core.settings:get_flags("mg_flags"),
+			carpathian = core.settings:get_flags("mgcarpathian_spflags"),
+			flat = core.settings:get_flags("mgflat_spflags"),
+			fractal = core.settings:get_flags("mgfractal_spflags"),
+			trailgen = core.settings:get_flags("mgtrailgen_spflags"),
 			v5 = core.settings:get_flags("mgv5_spflags"),
 			v6 = core.settings:get_flags("mgv6_spflags"),
 			v7 = core.settings:get_flags("mgv7_spflags"),
-			fractal = core.settings:get_flags("mgfractal_spflags"),
-			carpathian = core.settings:get_flags("mgcarpathian_spflags"),
 			valleys = core.settings:get_flags("mgvalleys_spflags"),
-			trailgen = core.settings:get_flags("mgtrailgen_spflags"),
-			flat = core.settings:get_flags("mgflat_spflags"),
 		}
 	}
 

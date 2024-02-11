@@ -25,6 +25,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include "nodedef.h"
 #include "util/string.h"
 #include "util/container.h"
+#include <utility>
 
 #define MAPGEN_DEFAULT MAPGEN_V7
 #define MAPGEN_DEFAULT_NAME "v7"
@@ -105,12 +106,12 @@ enum MapgenType {
 	MAPGEN_V7,
 	MAPGEN_VALLEYS,
 	MAPGEN_CARPATHIAN,
+	MAPGEN_TRAILGEN,
 	MAPGEN_V5,
 	MAPGEN_FLAT,
 	MAPGEN_FRACTAL,
 	MAPGEN_SINGLENODE,
 	MAPGEN_V6,
-	MAPGEN_TRAILGEN,
 	MAPGEN_INVALID,
 };
 
@@ -140,7 +141,6 @@ struct MapgenParams {
 	s32 getSpawnRangeMax();
 
 private:
-	void calcMapgenEdges();
 	bool m_mapgen_edges_calculated = false;
 };
 
@@ -150,9 +150,9 @@ private:
 	If a feature exposed by a public member pointer is not supported by a
 	certain mapgen, it must be set to NULL.
 
-	Apart from makeChunk, getGroundLevelAtPoint, and getSpawnLevelAtPoint, all
-	methods can be used by constructing a Mapgen base class and setting the
-	appropriate public members (e.g. vm, ndef, and so on).
+	Apart from makeChunk and getSpawnLevelAtPoint, all methods can be used by
+	constructing a Mapgen base class and setting the appropriate public members
+	(e.g. vm, ndef, and so on).
 */
 class Mapgen {
 public:
@@ -164,6 +164,9 @@ public:
 	int id = -1;
 
 	MMVManip *vm = nullptr;
+	// Note that this contains various things the mapgens *can* use, so biomegen
+	// might be NULL while m_emerge->biomegen is not.
+	EmergeParams *m_emerge = nullptr;
 	const NodeDefManager *ndef = nullptr;
 
 	u32 blockseed;
@@ -176,7 +179,7 @@ public:
 
 	Mapgen() = default;
 	Mapgen(int mapgenid, MapgenParams *params, EmergeParams *emerge);
-	virtual ~Mapgen() = default;
+	virtual ~Mapgen();
 	DISABLE_CLASS_COPY(Mapgen);
 
 	virtual MapgenType getType() const { return MAPGEN_INVALID; }
@@ -226,7 +229,6 @@ public:
 	void spreadLight(const v3s16 &nmin, const v3s16 &nmax);
 
 	virtual void makeChunk(BlockMakeData *data) {}
-	virtual int getGroundLevelAtPoint(v2s16 p) { return 0; }
 
 	// getSpawnLevelAtPoint() is a function within each mapgen that returns a
 	// suitable y co-ordinate for player spawn ('suitable' usually meaning
@@ -290,7 +292,6 @@ public:
 	virtual void generateDungeons(s16 max_stone_y);
 
 protected:
-	EmergeParams *m_emerge;
 	BiomeManager *m_bmgr;
 
 	Noise *noise_filler_depth;
@@ -325,9 +326,12 @@ protected:
 	int small_cave_num_max;
 	int large_cave_num_min;
 	int large_cave_num_max;
-	int map_height_mod;
 	float large_cave_flooded;
 	s16 large_cave_depth;
 	s16 dungeon_ymin;
 	s16 dungeon_ymax;
 };
+
+// Calculate exact edges of the outermost mapchunks that are within the set
+// mapgen_limit. Returns the minimum and maximum edges in nodes in that order.
+std::pair<s16, s16> get_mapgen_edges(s16 mapgen_limit, s16 chunksize);

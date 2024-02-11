@@ -44,12 +44,12 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include "mapgen_carpathian.h"
 #include "mapgen_flat.h"
 #include "mapgen_fractal.h"
+#include "mapgen_singlenode.h"
+#include "mapgen_trailgen.h"
 #include "mapgen_v5.h"
 #include "mapgen_v6.h"
 #include "mapgen_v7.h"
 #include "mapgen_valleys.h"
-#include "mapgen_trailgen.h"
-#include "mapgen_singlenode.h"
 #include "cavegen.h"
 #include "dungeongen.h"
 
@@ -83,7 +83,7 @@ struct MapgenDesc {
 //// Built-in mapgens
 ////
 
-// Order used here defines the order of appearence in mainmenu.
+// Order used here defines the order of appearance in mainmenu.
 // v6 always last to discourage selection.
 // Special mapgens flat, fractal, singlenode, next to last. Of these, singlenode
 // last to discourage selection.
@@ -93,17 +93,17 @@ static MapgenDesc g_reg_mapgens[] = {
 	{"v7",         true},
 	{"valleys",    true},
 	{"carpathian", true},
+	{"trailgen",   true},
 	{"v5",         true},
 	{"flat",       true},
 	{"fractal",    true},
 	{"singlenode", true},
 	{"v6",         true},
-	{"trailgen",         true},
 };
 
-STATIC_ASSERT(
+static_assert(
 	ARRLEN(g_reg_mapgens) == MAPGEN_INVALID,
-	registered_mapgens_is_wrong_size);
+	"g_reg_mapgens is wrong size");
 
 ////
 //// Mapgen
@@ -133,7 +133,13 @@ Mapgen::Mapgen(int mapgenid, MapgenParams *params, EmergeParams *emerge) :
 	*/
 	seed = (s32)params->seed;
 
+	m_emerge  = emerge;
 	ndef      = emerge->ndef;
+}
+
+Mapgen::~Mapgen()
+{
+	delete m_emerge; // this is our responsibility
 }
 
 
@@ -170,6 +176,8 @@ Mapgen *Mapgen::createMapgen(MapgenType mgtype, MapgenParams *params,
 		return new MapgenFractal((MapgenFractalParams *)params, emerge);
 	case MAPGEN_SINGLENODE:
 		return new MapgenSinglenode((MapgenSinglenodeParams *)params, emerge);
+	case MAPGEN_TRAILGEN:
+		return new MapgenTrailgen((MapgenTrailgenParams *)params, emerge);
 	case MAPGEN_V5:
 		return new MapgenV5((MapgenV5Params *)params, emerge);
 	case MAPGEN_V6:
@@ -178,8 +186,6 @@ Mapgen *Mapgen::createMapgen(MapgenType mgtype, MapgenParams *params,
 		return new MapgenV7((MapgenV7Params *)params, emerge);
 	case MAPGEN_VALLEYS:
 		return new MapgenValleys((MapgenValleysParams *)params, emerge);
-	case MAPGEN_TRAILGEN:
-		return new MapgenTrailgen((MapgenTrailgenParams *)params, emerge);
 	default:
 		return nullptr;
 	}
@@ -197,6 +203,8 @@ MapgenParams *Mapgen::createMapgenParams(MapgenType mgtype)
 		return new MapgenFractalParams;
 	case MAPGEN_SINGLENODE:
 		return new MapgenSinglenodeParams;
+	case MAPGEN_TRAILGEN:
+		return new MapgenTrailgenParams;
 	case MAPGEN_V5:
 		return new MapgenV5Params;
 	case MAPGEN_V6:
@@ -205,8 +213,6 @@ MapgenParams *Mapgen::createMapgenParams(MapgenType mgtype)
 		return new MapgenV7Params;
 	case MAPGEN_VALLEYS:
 		return new MapgenValleysParams;
-	case MAPGEN_TRAILGEN:
-		return new MapgenTrailgenParams;
 	default:
 		return nullptr;
 	}
@@ -370,7 +376,12 @@ inline bool Mapgen::isLiquidHorizontallyFlowable(u32 vi, v3s16 em)
 void Mapgen::updateLiquid(UniqueQueue<v3s16> *trans_liquid, v3s16 nmin, v3s16 nmax)
 {
 	bool isignored, isliquid, wasignored, wasliquid, waschecked, waspushed;
+	content_t was_n;
 	const v3s16 &em  = vm->m_area.getExtent();
+
+	isignored = true;
+	isliquid = false;
+	was_n = CONTENT_IGNORE;
 
 	for (s16 z = nmin.Z + 1; z <= nmax.Z - 1; z++)
 	for (s16 x = nmin.X + 1; x <= nmax.X - 1; x++) {
@@ -381,8 +392,11 @@ void Mapgen::updateLiquid(UniqueQueue<v3s16> *trans_liquid, v3s16 nmin, v3s16 nm
 
 		u32 vi = vm->m_area.index(x, nmax.Y, z);
 		for (s16 y = nmax.Y; y >= nmin.Y; y--) {
-			isignored = vm->m_data[vi].getContent() == CONTENT_IGNORE;
-			isliquid = ndef->get(vm->m_data[vi]).isLiquid();
+			const content_t is_n = vm->m_data[vi].getContent();
+			if (is_n != was_n) {
+				isignored = is_n == CONTENT_IGNORE;
+				isliquid = ndef->get(is_n).isLiquid();
+			}
 
 			if (isignored || wasignored || isliquid == wasliquid) {
 				// Neither topmost node of liquid column nor topmost node below column
@@ -411,6 +425,7 @@ void Mapgen::updateLiquid(UniqueQueue<v3s16> *trans_liquid, v3s16 nmin, v3s16 nm
 				}
 			}
 
+			was_n = is_n;
 			wasliquid = isliquid;
 			wasignored = isignored;
 			VoxelArea::add_y(em, vi, -1);
@@ -456,7 +471,7 @@ void Mapgen::lightSpread(VoxelArea &a, std::queue<std::pair<v3s16, u8>> &queue,
 	// we hit a solid block that light cannot pass through.
 	if ((light_day  <= (n.param1 & 0x0F) &&
 			light_night <= (n.param1 & 0xF0)) ||
-			!ndef->get(n).light_propagates)
+			!ndef->getLightingFlags(n).light_propagates)
 		return;
 
 	// MYMAX still needed here because we only exit early if both banks have
@@ -506,7 +521,7 @@ void Mapgen::propagateSunlight(v3s16 nmin, v3s16 nmax, bool propagate_shadow)
 
 			for (int y = a.MaxEdge.Y; y >= a.MinEdge.Y; y--) {
 				MapNode &n = vm->m_data[i];
-				if (!ndef->get(n).sunlight_propagates)
+				if (!ndef->getLightingFlags(n).sunlight_propagates)
 					break;
 				n.param1 = LIGHT_SUN;
 				VoxelArea::add_y(em, i, -1);
@@ -531,7 +546,7 @@ void Mapgen::spreadLight(const v3s16 &nmin, const v3s16 &nmax)
 				if (n.getContent() == CONTENT_IGNORE)
 					continue;
 
-				const ContentFeatures &cf = ndef->get(n);
+				ContentLightingFlags cf = ndef->getLightingFlags(n);
 				if (!cf.light_propagates)
 					continue;
 
@@ -572,7 +587,6 @@ void Mapgen::spreadLight(const v3s16 &nmin, const v3s16 &nmax)
 MapgenBasic::MapgenBasic(int mapgenid, MapgenParams *params, EmergeParams *emerge)
 	: Mapgen(mapgenid, params, emerge)
 {
-	this->m_emerge = emerge;
 	this->m_bmgr   = emerge->biomemgr;
 
 	//// Here, 'stride' refers to the number of elements needed to skip to index
@@ -626,8 +640,6 @@ MapgenBasic::MapgenBasic(int mapgenid, MapgenParams *params, EmergeParams *emerg
 MapgenBasic::~MapgenBasic()
 {
 	delete []heightmap;
-
-	delete m_emerge; // destroying EmergeParams is our responsibility
 }
 
 
@@ -642,6 +654,8 @@ void MapgenBasic::generateBiomes()
 
 	noise_filler_depth->perlinMap2D(node_min.X, node_min.Z);
 
+	s16 *biome_transitions = biomegen->getBiomeTransitions();
+
 	for (s16 z = node_min.Z; z <= node_max.Z; z++)
 	for (s16 x = node_min.X; x <= node_max.X; x++, index++) {
 		Biome *biome = NULL;
@@ -650,8 +664,10 @@ void MapgenBasic::generateBiomes()
 		u16 base_filler = 0;
 		u16 depth_water_top = 0;
 		u16 depth_riverbed = 0;
-		s16 biome_y_min = -MAX_MAP_GENERATION_LIMIT;
 		u32 vi = vm->m_area.index(x, node_max.Y, z);
+
+		int cur_biome_depth = 0;
+		s16 biome_y_min = biome_transitions[cur_biome_depth];
 
 		// Check node at base of mapchunk above, either a node of a previously
 		// generated mapchunk or if not, a node of overgenerated base terrain.
@@ -681,8 +697,19 @@ void MapgenBasic::generateBiomes()
 				(air_above || !biome || y < biome_y_min); // 2, 3, 4
 
 			if (is_stone_surface || is_water_surface) {
-				// (Re)calculate biome
-				biome = biomegen->getBiomeAtIndex(index, v3s16(x, y, z));
+				if (!biome || y < biome_y_min) {
+					// (Re)calculate biome
+					biome = biomegen->getBiomeAtIndex(index, v3s16(x, y, z));
+
+					// Finding the height of the next biome
+					// On first iteration this may loop a couple times after than it should just run once
+					while (y < biome_y_min) {
+						biome_y_min = biome_transitions[++cur_biome_depth];
+					}
+
+					/*if (x == node_min.X && z == node_min.Z)
+						printf("Map: check @ %i -> %s -> again at %i\n", y, biome->name.c_str(), biome_y_min);*/
+				}
 
 				// Add biome to biomemap at first stone surface detected
 				if (biomemap[index] == BIOME_NONE && is_stone_surface)
@@ -699,7 +726,6 @@ void MapgenBasic::generateBiomes()
 					noise_filler_depth->result[index], 0.0f);
 				depth_water_top = biome->depth_water_top;
 				depth_riverbed = biome->depth_riverbed;
-				biome_y_min = biome->min_pos.Y;
 			}
 
 			if (c == c_stone) {
@@ -751,7 +777,7 @@ void MapgenBasic::generateBiomes()
 				nplaced = 0;  // Enable top/filler placement for next surface
 				air_above = true;
 				water_above = false;
-			} else {  // Possible various nodes overgenerated from neighbouring mapchunks
+			} else {  // Possible various nodes overgenerated from neighboring mapchunks
 				nplaced = U16_MAX;  // Disable top/filler placement
 				air_above = false;
 				water_above = false;
@@ -839,7 +865,7 @@ void MapgenBasic::generateCavesNoiseIntersection(s16 max_stone_y)
 	if (node_min.Y > max_stone_y || cave_width >= 10.0f)
 		return;
 
-	CavesNoiseIntersection caves_noise(ndef, m_bmgr, csize,
+	CavesNoiseIntersection caves_noise(ndef, m_bmgr, biomegen, csize,
 		&np_cave1, &np_cave2, seed, cave_width);
 
 	caves_noise.generateCaves(vm, node_min, node_max, biomemap);
@@ -1069,9 +1095,20 @@ void MapgenParams::writeParams(Settings *settings) const
 }
 
 
-// Calculate exact edges of the outermost mapchunks that are within the
-// set 'mapgen_limit'.
-void MapgenParams::calcMapgenEdges()
+s32 MapgenParams::getSpawnRangeMax()
+{
+	if (!m_mapgen_edges_calculated) {
+		std::pair<s16, s16> edges = get_mapgen_edges(mapgen_limit, chunksize);
+		mapgen_edge_min = edges.first;
+		mapgen_edge_max = edges.second;
+		m_mapgen_edges_calculated = true;
+	}
+
+	return MYMIN(-mapgen_edge_min, mapgen_edge_max);
+}
+
+
+std::pair<s16, s16> get_mapgen_edges(s16 mapgen_limit, s16 chunksize)
 {
 	// Central chunk offset, in blocks
 	s16 ccoff_b = -chunksize / 2;
@@ -1095,17 +1132,5 @@ void MapgenParams::calcMapgenEdges()
 	s16 numcmin = MYMAX((ccfmin - mapgen_limit_min) / csize_n, 0);
 	s16 numcmax = MYMAX((mapgen_limit_max - ccfmax) / csize_n, 0);
 	// Mapgen edges, in nodes
-	mapgen_edge_min = ccmin - numcmin * csize_n;
-	mapgen_edge_max = ccmax + numcmax * csize_n;
-
-	m_mapgen_edges_calculated = true;
-}
-
-
-s32 MapgenParams::getSpawnRangeMax()
-{
-	if (!m_mapgen_edges_calculated)
-		calcMapgenEdges();
-
-	return MYMIN(-mapgen_edge_min, mapgen_edge_max);
+	return std::pair<s16, s16>(ccmin - numcmin * csize_n, ccmax + numcmax * csize_n);
 }
